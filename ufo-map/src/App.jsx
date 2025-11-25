@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
 import TimeSlider from "./TimeSlider";
 
-/* Convert seconds → readable label */
 function humanDuration(sec) {
   if (!sec && sec !== 0) return "";
   if (sec < 60) return `${sec}s`;
@@ -512,4 +511,5 @@ function App() {
   );
 }
 
-export default App;
+
+export default App;d

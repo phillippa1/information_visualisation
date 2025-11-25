@@ -24,7 +24,7 @@ const DurationFilter = ({ selectedDuration, setSelectedDuration, data }) => {
     { label: "Medium (1–5 min)", range: [60, 300] },
     { label: "Long (5–30 min)", range: [300, 1800] },
     { label: "Very Long (30–60 min)", range: [1800, 3600] },
-    { label: "Extremely Long (> 1 hr)", range: [3600, globalMax] }
+    { label: "Extremely Long (> 1 hr)", range: [3600, globalMax] },
   ];
 
   const applyPreset = (range) => {
@@ -68,29 +68,48 @@ const DurationFilter = ({ selectedDuration, setSelectedDuration, data }) => {
             min={globalMin}
             max={globalMax}
             value={minVal}
-            onChange={(e) => setSelectedDuration([Number(e.target.value), maxVal])}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setMinVal(v);
+              setSelectedDuration([v, maxVal]);
+            }}
             style={{ width: "100%" }}
           />
+
           <input
             type="range"
             min={globalMin}
             max={globalMax}
             value={maxVal}
-            onChange={(e) => setSelectedDuration([minVal, Number(e.target.value)])}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setMaxVal(v);
+              setSelectedDuration([minVal, v]);
+            }}
             style={{ width: "100%" }}
           />
 
+          {/* Numeric inputs */}
           <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
             <input
               type="number"
               value={minVal}
-              onChange={(e) => setSelectedDuration([Number(e.target.value), maxVal])}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setMinVal(v);
+                setSelectedDuration([v, maxVal]);
+              }}
               style={{ width: "50%", padding: "5px" }}
             />
+
             <input
               type="number"
               value={maxVal}
-              onChange={(e) => setSelectedDuration([minVal, Number(e.target.value)])}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setMaxVal(v);
+                setSelectedDuration([minVal, v]);
+              }}
               style={{ width: "50%", padding: "5px" }}
             />
           </div>
@@ -98,6 +117,7 @@ const DurationFilter = ({ selectedDuration, setSelectedDuration, data }) => {
           <hr style={{ margin: "15px 0" }} />
 
           <h4>Presets</h4>
+
           {presets.map((p) => (
             <button
               key={p.label}
@@ -105,4 +125,21 @@ const DurationFilter = ({ selectedDuration, setSelectedDuration, data }) => {
               style={{
                 display: "block",
                 width: "100%",
+                padding: "8px",
                 marginBottom: "8px",
+                background: "#f0f0ff",
+                border: "1px solid #aaa",
+                borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default DurationFilter;
