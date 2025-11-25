@@ -1,0 +1,11 @@
+
+react
+react-dom
+react-leaflet
+leaflet
+papaparse
+countries-list
+vite
+@vitejs/plugin-react
+
+make sure - Node.js >= 22.12.0

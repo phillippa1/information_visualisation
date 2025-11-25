@@ -3,16 +3,16 @@
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
 
-/* 1. 强制让 html, body 和 react的挂载点(#root) 撑满屏幕 */
+/* 1. Force the html, body and react mount points (#root) to fill up the screen */
 html, body, #root {
   width: 100%;
   height: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden; /* 防止出现双滚动条 */
+  overflow: hidden; /* Prevent the appearance of double scroll bars */
 }
 
-/* 2. 修复 Leaflet 地图容器的高度问题 */
+/* 2. Fix the height issue of the Leaflet map container */
 .leaflet-container {
   width: 100%;
   height: 100%;
