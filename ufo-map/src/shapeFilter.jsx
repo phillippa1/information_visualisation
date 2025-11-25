@@ -4,7 +4,6 @@ const ShapeFilter = ({ data, selectedShapes, setSelectedShapes }) => {
   const [search, setSearch] = useState("");
   const [shapes, setShapes] = useState([]);
 
-  // Extract unique shapes from CSV data
   useEffect(() => {
     const uniqueShapes = Array.from(
       new Set(
@@ -16,7 +15,6 @@ const ShapeFilter = ({ data, selectedShapes, setSelectedShapes }) => {
       )
     ).sort();
 
-    // Only update shapes if they changed
     setShapes((prev) => {
       if (JSON.stringify(prev) !== JSON.stringify(uniqueShapes)) {
         return uniqueShapes;
@@ -24,7 +22,6 @@ const ShapeFilter = ({ data, selectedShapes, setSelectedShapes }) => {
       return prev;
     });
 
-    // Initialize selected shapes only ONCE
     if (selectedShapes.length === 0 && uniqueShapes.length > 0) {
       setSelectedShapes(uniqueShapes);
     }
@@ -46,7 +43,6 @@ const ShapeFilter = ({ data, selectedShapes, setSelectedShapes }) => {
     <div className="shape-filter">
       <h3>Filter by UFO Shape</h3>
 
-      {/* SEARCH BAR */}
       <input
         type="text"
         placeholder="Search shapes..."
@@ -55,7 +51,6 @@ const ShapeFilter = ({ data, selectedShapes, setSelectedShapes }) => {
         style={{ width: "100%", marginBottom: "10px", padding: "6px" }}
       />
 
-      {/* SHAPE CHECKBOX LIST */}
       <div style={{ maxHeight: "200px", overflowY: "auto", padding: "5px" }}>
         {filteredShapes.map((shape) => (
           <label
