@@ -5,7 +5,25 @@ import { useEffect, useMemo, useState } from "react";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
 import TimeSlider from "./TimeSlider";
 
-// Mapping continent codes to full names
+/* Convert seconds → readable label */
+function humanDuration(sec) {
+  if (!sec && sec !== 0) return "";
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)} min`;
+  if (sec < 86400) return `${(sec / 3600).toFixed(1)} hr`;
+  if (sec < 604800) return `${(sec / 86400).toFixed(1)} days`;
+  return `${(sec / 2592000).toFixed(1)} months`;
+}
+
+function unitToSeconds(value, unit) {
+  if (unit === "sec") return value;
+  if (unit === "min") return value * 60;
+  if (unit === "hr") return value * 3600;
+  if (unit === "day") return value * 86400;
+  return value;
+}
+
+/* ------------------------------- */
 const continentMap = {
   AF: "Africa",
   AN: "Antarctica",
@@ -15,145 +33,401 @@ const continentMap = {
   OC: "Oceania",
   SA: "South America",
 };
-
+/* ------------------------------- */
 
 function App() {
+  /* RAW DATA */
   const [data, setData] = useState([]);
-  const [debugHeaders, setDebugHeaders] = useState([]); // For debugging: show cleaned headers
+  const [debugHeaders, setDebugHeaders] = useState([]);
+
+  /* CONTINENT / COUNTRY */
   const [selectedContinent, setSelectedContinent] = useState(null);
   const [selectedCountry, setSelectedCountry] = useState(null);
-  const [selectedRecord, setSelectedRecord] = useState(null);
-  const [selectedYear, setSelectedYear] = useState([1906, 2014]); // range
 
+  /* RECORD POPUP */
+  const [selectedRecord, setSelectedRecord] = useState(null);
+
+  /* YEAR SLIDER */
+  const [selectedYear, setSelectedYear] = useState([1906, 2014]);
+
+  /* SHAPES */
+  const [shapeOpen, setShapeOpen] = useState(false);
+  const [allShapes, setAllShapes] = useState([]);
+  const [selectedShapes, setSelectedShapes] = useState([]);
+  const [shapeSearch, setShapeSearch] = useState("");
+
+  /* DURATION */
+  const [durationOpen, setDurationOpen] = useState(false);
+  const [durationEnabled, setDurationEnabled] = useState(false);
+
+  const [minDuration, setMinDuration] = useState(0);
+  const [maxDuration, setMaxDuration] = useState(3600);
+  const [minUnit, setMinUnit] = useState("sec");
+  const [maxUnit, setMaxUnit] = useState("sec");
+
+  const selectedDuration = [
+    unitToSeconds(minDuration, minUnit),
+    unitToSeconds(maxDuration, maxUnit),
+  ];
+
+  /* PRESETS */
+  const durationPresets = [
+    { label: "0–10 sec", min: 0, max: 10 },
+    { label: "10–60 sec", min: 10, max: 60 },
+    { label: "1–10 min", min: 60, max: 600 },
+    { label: "10–60 min", min: 600, max: 3600 },
+    { label: "1–6 hours", min: 3600, max: 21600 },
+    { label: "6–24 hours", min: 21600, max: 86400 },
+    { label: "1–7 days", min: 86400, max: 604800 },
+    { label: "1 week – 1 month", min: 604800, max: 2592000 },
+    { label: "Over 1 month", min: 2592000, max: 999999999 },
+  ];
+
+  /* Duration summary for collapsed button */
+  const durationSummary = durationEnabled
+    ? `${humanDuration(selectedDuration[0])} – ${humanDuration(
+        selectedDuration[1]
+      )}`
+    : "OFF";
+
+  /* -------------------- LOAD CSV -------------------- */
   useEffect(() => {
-    // Load and parse CSV file from public folder
     Papa.parse("/UFO_dataset.csv", {
       download: true,
       header: true,
       skipEmptyLines: true,
-      transformHeader: (header) => {
-        // Clean headers: remove spaces and special characters, lowercase
-        return header.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-      },
+      transformHeader: (h) => h.replace(/[^a-zA-Z0-9]/g, "").toLowerCase(),
       complete: (results) => {
-        if (results.data.length > 0) {
+        if (results.data.length > 0)
           setDebugHeaders(Object.keys(results.data[0]));
-        }
 
-        const validData = results.data
-          .filter((item) => {
-            const lat = item.latitude || item.lat;
-            const lng = item.longitude || item.long || item.lng;
-            return lat && lng;
-          })
-          .map((item) => {
+        const cleaned = results.data
+          .map((item, index) => {
+            /* YEAR FIX */
+            let year = null;
+            if (item.datetime) {
+              const p = item.datetime.split(" ")[0].split("/");
+              if (p.length === 3) {
+                const y = parseInt(p[2]);
+                if (!isNaN(y)) year = y;
+              }
+            }
+
             const code = item.country?.toUpperCase();
-            const continentCode = countries[code]?.continent || "Unknown";
+            const cont = countries[code]?.continent || "Unknown";
+
             return {
               ...item,
-              continent: continentMap[continentCode] || "Unknown",
-              year: parseInt(item.datetime?.split("/")[2]) || null
+              id: index,
+              year,
+              durationSeconds: Number(item.durationseconds) || 0,
+              shape: item.shape?.toLowerCase().trim() || "unknown",
+              continent: continentMap[cont] || "Unknown",
+              lat: parseFloat(item.latitude),
+              lng: parseFloat(item.longitude),
             };
-          });
+          })
+          .filter((d) => !isNaN(d.lat) && !isNaN(d.lng));
 
-        console.log("First cleaned record:", validData[0]);
-        setData(validData);
+        const shapes = [...new Set(cleaned.map((d) => d.shape))].sort();
+        setAllShapes(shapes);
+        setSelectedShapes(shapes);
+
+        setData(cleaned);
       },
     });
   }, []);
 
-  // Filter data based on selection
+  /* -------------------- FILTERING -------------------- */
   const filteredData = useMemo(() => {
-    let filtered = [...data];
+    if (data.length === 0) return [];
 
-    if (selectedCountry) {
-      filtered = filtered.filter(d => d.country === selectedCountry);
-    } else if (selectedContinent) {
-      filtered = filtered.filter(d => d.continent === selectedContinent);
-    }
+    let base = data.slice(0, 2000);
+    base.sort((a, b) => a.id - b.id);
 
-    filtered = filtered.filter(
-      d => d.year >= selectedYear[0] && d.year <= selectedYear[1]
+    /* SHAPE */
+    base = base.filter((d) => selectedShapes.includes(d.shape));
+
+    /* CONTINENT & COUNTRY */
+    if (selectedCountry)
+      base = base.filter((d) => d.country === selectedCountry);
+    else if (selectedContinent)
+      base = base.filter((d) => d.continent === selectedContinent);
+
+    /* YEAR */
+    base = base.filter(
+      (d) => d.year >= selectedYear[0] && d.year <= selectedYear[1]
     );
 
-    return filtered.slice(0, 300);
-  }, [data, selectedContinent, selectedCountry, selectedYear]);
+    /* DURATION (optional ON/OFF) */
+    if (durationEnabled) {
+      base = base.filter(
+        (d) =>
+          d.durationSeconds >= selectedDuration[0] &&
+          d.durationSeconds <= selectedDuration[1]
+      );
+    }
 
-  console.log(filteredData.length, selectedYear);
+    return base.slice(0, 500);
+  }, [
+    data,
+    selectedShapes,
+    selectedContinent,
+    selectedCountry,
+    selectedYear,
+    durationEnabled,
+    selectedDuration,
+  ]);
 
+  /* -------------------- RENDER -------------------- */
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100vh" }}>
-      {/* --- Left Panel --- */}
+    <div style={{ width: "100%", height: "100vh", position: "relative" }}>
+      {/* SIDEBAR */}
       <div
         style={{
           position: "absolute",
-          top: "20px",
-          left: "20px",
-          width: "340px",
-          maxHeight: "90vh",
-          backgroundColor: "white",
-          zIndex: 1000,
-          borderRadius: "8px",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
-          padding: "15px",
+          top: 20,
+          left: 20,
+          width: 340,
+          padding: 15,
+          borderRadius: 8,
+          background: "white",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
           overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          fontFamily: "Arial, sans-serif",
+          maxHeight: "90vh",
+          zIndex: 1000,
+          fontFamily: "Arial",
         }}
       >
-        {/* Debug Info */}
+        {/* DEBUG INFO */}
         <div
           style={{
             background: "#ffebee",
-            padding: "10px",
-            borderRadius: "5px",
-            marginBottom: "15px",
-            fontSize: "12px",
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 15,
+            fontSize: 12,
           }}
         >
-          <strong style={{ color: "#c62828" }}>🛠 Debug Info:</strong>
+          <b>🛠 Debug Info</b>
           <br />
-          Loaded columns (Keys):
-          <br />
-          <code
-            style={{
-              display: "block",
-              marginTop: "5px",
-              wordBreak: "break-all",
-            }}
-          >
-            {debugHeaders.join(", ")}
-          </code>
-          <br />
-          Valid records: <strong>{data.length}</strong>
+          Columns: {debugHeaders.join(", ")}
+          <br /> Valid rows: {data.length}
         </div>
 
-        {/* Navigation Panel */}
+        {/* -------------------- SHAPE DROPDOWN -------------------- */}
+        <button
+          onClick={() => setShapeOpen(!shapeOpen)}
+          style={{
+            width: "100%",
+            padding: 8,
+            textAlign: "left",
+            background: "#e8eaf6",
+            border: "1px solid #90caf9",
+            borderRadius: 4,
+            marginBottom: 8,
+            cursor: "pointer",
+          }}
+        >
+          Filter Shapes ▾
+        </button>
+
+        {shapeOpen && (
+          <div
+            style={{
+              background: "#e8eaf6",
+              padding: 10,
+              borderRadius: 5,
+              marginBottom: 15,
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Search shapes..."
+              value={shapeSearch}
+              onChange={(e) => setShapeSearch(e.target.value)}
+              style={{
+                width: "100%",
+                padding: 5,
+                marginBottom: 10,
+                borderRadius: 4,
+                border: "1px solid #ccc",
+              }}
+            />
+
+            <div style={{ maxHeight: 150, overflowY: "auto" }}>
+              {allShapes
+                .filter((s) =>
+                  s.toLowerCase().includes(shapeSearch.toLowerCase())
+                )
+                .map((shape) => (
+                  <label
+                    key={shape}
+                    style={{ display: "block", marginBottom: 6 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedShapes.includes(shape)}
+                      onChange={() =>
+                        setSelectedShapes((prev) =>
+                          prev.includes(shape)
+                            ? prev.filter((x) => x !== shape)
+                            : [...prev, shape]
+                        )
+                      }
+                    />
+                    {" " + shape}
+                  </label>
+                ))}
+            </div>
+
+            <button
+              onClick={() => setSelectedShapes(allShapes)}
+              style={{ marginTop: 10, marginRight: 10 }}
+            >
+              Select All
+            </button>
+            <button onClick={() => setSelectedShapes([])}>Clear</button>
+          </div>
+        )}
+
+        {/* -------------------- DURATION DROPDOWN -------------------- */}
+
+        <button
+          onClick={() => setDurationOpen(!durationOpen)}
+          style={{
+            width: "100%",
+            padding: 8,
+            textAlign: "left",
+            background: "#e8eaf6",
+            border: "1px solid #90caf9",
+            borderRadius: 4,
+            marginBottom: 8,
+            cursor: "pointer",
+          }}
+        >
+          Filter Duration ({durationSummary}) ▾
+        </button>
+
+        {durationOpen && (
+          <div
+            style={{
+              background: "#e8eaf6",
+              padding: 10,
+              borderRadius: 5,
+              marginBottom: 15,
+            }}
+          >
+            {/* Enable / Disable */}
+            <label style={{ display: "block", marginBottom: 10 }}>
+              <input
+                type="checkbox"
+                checked={durationEnabled}
+                onChange={() => setDurationEnabled(!durationEnabled)}
+              />{" "}
+              Enable Duration Filter
+            </label>
+
+            {/* WHEN ENABLED, SHOW CONTROLS */}
+            {durationEnabled && (
+              <>
+                {/* MIN */}
+                <div style={{ marginBottom: 10 }}>
+                  Min:{" "}
+                  <input
+                    type="number"
+                    value={minDuration}
+                    onChange={(e) =>
+                      setMinDuration(Number(e.target.value))
+                    }
+                    style={{ width: 60 }}
+                  />
+                  <select
+                    value={minUnit}
+                    onChange={(e) => setMinUnit(e.target.value)}
+                    style={{ marginLeft: 5 }}
+                  >
+                    <option value="sec">sec</option>
+                    <option value="min">min</option>
+                    <option value="hr">hr</option>
+                    <option value="day">day</option>
+                  </select>
+                </div>
+
+                {/* MAX */}
+                <div style={{ marginBottom: 20 }}>
+                  Max:{" "}
+                  <input
+                    type="number"
+                    value={maxDuration}
+                    onChange={(e) =>
+                      setMaxDuration(Number(e.target.value))
+                    }
+                    style={{ width: 60 }}
+                  />
+                  <select
+                    value={maxUnit}
+                    onChange={(e) => setMaxUnit(e.target.value)}
+                    style={{ marginLeft: 5 }}
+                  >
+                    <option value="sec">sec</option>
+                    <option value="min">min</option>
+                    <option value="hr">hr</option>
+                    <option value="day">day</option>
+                  </select>
+                </div>
+
+                {/* PRESETS */}
+                <h4>Presets</h4>
+                {durationPresets.map((p) => (
+                  <button
+                    key={p.label}
+                    onClick={() => {
+                      setMinUnit("sec");
+                      setMaxUnit("sec");
+                      setMinDuration(p.min);
+                      setMaxDuration(p.max);
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      marginBottom: 6,
+                      padding: 6,
+                      borderRadius: 4,
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* -------------------- CONTINENT / COUNTRY NAV -------------------- */}
+
         {!selectedContinent && (
           <div>
             <h3>Select a Continent</h3>
-            {[...new Set(data.map((d) => d.continent))].map((continent) => (
+            {[...new Set(data.map((d) => d.continent))].map((c) => (
               <button
-                key={continent}
+                key={c}
                 onClick={() => {
-                  setSelectedContinent(continent);
+                  setSelectedContinent(c);
                   setSelectedCountry(null);
-                  setSelectedRecord(null);
                 }}
                 style={{
                   display: "block",
-                  margin: "5px 0",
-                  padding: "8px",
                   width: "100%",
+                  padding: 8,
+                  margin: "5px 0",
                   background: "#e3f2fd",
+                  borderRadius: 4,
                   border: "1px solid #90caf9",
-                  borderRadius: "4px",
-                  cursor: "pointer",
                 }}
               >
-                {continent}
+                {c}
               </button>
             ))}
           </div>
@@ -161,42 +435,34 @@ function App() {
 
         {selectedContinent && !selectedCountry && (
           <div>
-            <h3>{selectedContinent} - Countries</h3>
             <button
               onClick={() => setSelectedContinent(null)}
               style={{
-                marginBottom: "10px",
-                padding: "6px",
+                padding: 6,
+                marginBottom: 10,
+                borderRadius: 4,
                 background: "#f5f5f5",
-                border: "1px solid #ccc",
-                borderRadius: "4px",
-                cursor: "pointer",
               }}
             >
-              ← Back to Continents
+              ← Back
             </button>
-            {[
-              ...new Set(
-                data
-                  .filter((d) => d.continent === selectedContinent)
-                  .map((d) => d.country)
-              ),
-            ].map((country) => (
+
+            {[...new Set(
+              data
+                .filter((d) => d.continent === selectedContinent)
+                .map((d) => d.country)
+            )].map((country) => (
               <button
                 key={country}
-                onClick={() => {
-                  setSelectedCountry(country);
-                  setSelectedRecord(null);
-                }}
+                onClick={() => setSelectedCountry(country)}
                 style={{
                   display: "block",
-                  margin: "5px 0",
-                  padding: "8px",
                   width: "100%",
+                  padding: 8,
+                  margin: "5px 0",
                   background: "#e8f5e9",
+                  borderRadius: 4,
                   border: "1px solid #81c784",
-                  borderRadius: "4px",
-                  cursor: "pointer",
                 }}
               >
                 {country}
@@ -204,119 +470,44 @@ function App() {
             ))}
           </div>
         )}
-
-        {selectedCountry && (
-          <div>
-            <h3>{selectedCountry} - Records</h3>
-            <button
-              onClick={() => setSelectedCountry(null)}
-              style={{
-                marginBottom: "10px",
-                padding: "6px",
-                background: "#f5f5f5",
-                border: "1px solid #ccc",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
-            >
-              ← Back to Countries
-            </button>
-            {data
-              .filter((d) => d.country === selectedCountry)
-              .map((item, index) => (
-                <div
-                  key={index}
-                  onClick={() => setSelectedRecord(item)}
-                  style={{
-                    borderBottom: "1px solid #eee",
-                    padding: "8px 0",
-                    fontSize: "13px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <strong>{item.datetime}</strong>
-                  <br />
-                  {item.city}
-                </div>
-              ))}
-          </div>
-        )}
-
-        {selectedRecord && (
-          <div
-            style={{
-              marginTop: "20px",
-              padding: "10px",
-              background: "#f5f5f5",
-              borderRadius: "5px",
-            }}
-          >
-            <h4>Record Details</h4>
-            <p>
-              <strong>Date/Time:</strong> {selectedRecord.datetime}
-            </p>
-            <p>
-              <strong>City:</strong> {selectedRecord.city}
-            </p>
-            <p>
-              <strong>Shape:</strong> {selectedRecord.shape}
-            </p>
-            <p>
-              <strong>Duration:</strong> {selectedRecord.durationseconds}{" "}
-              seconds
-            </p>
-            <p>
-              <strong>Comments:</strong> {selectedRecord.comments}
-            </p>
-          </div>
-        )}
       </div>
 
-      {/* --- Map --- */}
+      {/* -------------------- MAP -------------------- */}
       <MapContainer
         center={[38, -97]}
         zoom={4}
         style={{ height: "100%", width: "100%" }}
       >
         <TileLayer
-          attribution="&copy; OpenStreetMap"
+          attribution="© OpenStreetMap"
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
-        {filteredData.map((item, index) => {
-          const lat = parseFloat(item.latitude || item.lat);
-          const lng = parseFloat(item.longitude || item.long || item.lng);
-          if (isNaN(lat) || isNaN(lng)) return null;
 
-          return (
-            <CircleMarker
-              key={index}
-              center={[lat, lng]}
-              radius={5}
-              pathOptions={{
-                color: "#d64541",
-                fillColor: "#d64541",
-                fillOpacity: 0.8,
-                stroke: false,
-              }}
-              eventHandlers={{
-                click: () => setSelectedRecord(item),
-              }}
-            >
-              <Popup>
-                <strong>{item.city}</strong>
-                <br />
-                {item.shape}
-                <br />
-                {item.datetime}
-              </Popup>
-            </CircleMarker>
-          );
-        })}
+        {filteredData.map((item) => (
+          <CircleMarker
+            key={item.id}
+            center={[item.lat, item.lng]}
+            radius={5}
+            pathOptions={{
+              color: "#d64541",
+              fillColor: "#d64541",
+              fillOpacity: 0.8,
+            }}
+          >
+            <Popup>
+              <strong>{item.city}</strong>
+              <br />
+              {item.shape}
+              <br />
+              {item.datetime}
+              <br />
+              Duration: {humanDuration(item.durationSeconds)}
+            </Popup>
+          </CircleMarker>
+        ))}
       </MapContainer>
 
       <TimeSlider selectedYear={selectedYear} setSelectedYear={setSelectedYear} />
-
-
     </div>
   );
 }
