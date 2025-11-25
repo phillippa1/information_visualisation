@@ -3,6 +3,7 @@ import "leaflet/dist/leaflet.css";
 import Papa from "papaparse";
 import { useEffect, useMemo, useState } from "react";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
+import TimeSlider from "./TimeSlider";
 
 // Mapping continent codes to full names
 const continentMap = {
@@ -15,12 +16,14 @@ const continentMap = {
   SA: "South America",
 };
 
+
 function App() {
   const [data, setData] = useState([]);
   const [debugHeaders, setDebugHeaders] = useState([]); // For debugging: show cleaned headers
   const [selectedContinent, setSelectedContinent] = useState(null);
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [selectedYear, setSelectedYear] = useState([1906, 2014]); // range
 
   useEffect(() => {
     // Load and parse CSV file from public folder
@@ -49,6 +52,7 @@ function App() {
             return {
               ...item,
               continent: continentMap[continentCode] || "Unknown",
+              year: parseInt(item.datetime?.split("/")[2]) || null
             };
           });
 
@@ -60,12 +64,23 @@ function App() {
 
   // Filter data based on selection
   const filteredData = useMemo(() => {
-    if (selectedCountry)
-      return data.filter((d) => d.country === selectedCountry);
-    if (selectedContinent)
-      return data.filter((d) => d.continent === selectedContinent);
-    return data.slice(0, 100); // Default: show first 100 points
-  }, [data, selectedContinent, selectedCountry]);
+    let filtered = [...data];
+
+    if (selectedCountry) {
+      filtered = filtered.filter(d => d.country === selectedCountry);
+    } else if (selectedContinent) {
+      filtered = filtered.filter(d => d.continent === selectedContinent);
+    }
+
+    filtered = filtered.filter(
+      d => d.year >= selectedYear[0] && d.year <= selectedYear[1]
+    );
+
+    return filtered.slice(0, 300);
+  }, [data, selectedContinent, selectedCountry, selectedYear]);
+
+  console.log(filteredData.length, selectedYear);
+
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100vh" }}>
@@ -298,6 +313,10 @@ function App() {
           );
         })}
       </MapContainer>
+
+      <TimeSlider selectedYear={selectedYear} setSelectedYear={setSelectedYear} />
+
+
     </div>
   );
 }
