@@ -14,13 +14,7 @@ import "leaflet/dist/leaflet.css";
 import Papa from "papaparse";
 import { useEffect, useMemo, useState } from "react";
 import { Bar, Line, Pie } from "react-chartjs-2";
-import {
-  CircleMarker,
-  MapContainer,
-  Popup,
-  TileLayer,
-  useMap,
-} from "react-leaflet";
+import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
 import "./App.css";
 
 ChartJS.register(
@@ -35,33 +29,15 @@ ChartJS.register(
   ArcElement
 );
 
-// ✅ 大洲中心坐标映射
-const continentCenters = {
-  Africa: [1.5, 17.3],
-  Asia: [34.0479, 100.6197],
-  Europe: [54.526, 15.2551],
-  NorthAmerica: [54.526, -105.2551],
-  Oceania: [-22.7359, 140.0188],
-  SouthAmerica: [-8.7832, -55.4915],
+const continentMap = {
+  AF: "Africa",
+  AN: "Antarctica",
+  AS: "Asia",
+  EU: "Europe",
+  NA: "North America",
+  OC: "Oceania",
+  SA: "South America",
 };
-
-// ✅ 国家 → 大洲映射
-const countryToContinent = {
-  AU: "Oceania",
-  CA: "North America",
-  DE: "Europe",
-  GB: "Europe",
-  US: "North America",
-};
-
-// ✅ 控制地图视图的组件
-function MapController({ center }) {
-  const map = useMap();
-  if (center) {
-    map.setView(center, 4); // 平移并缩放
-  }
-  return null;
-}
 
 function App() {
   const [data, setData] = useState([]);
@@ -77,6 +53,14 @@ function App() {
       transformHeader: (header) =>
         header.replace(/[^a-zA-Z0-9]/g, "").toLowerCase(),
       complete: (results) => {
+        const countryToContinent = {
+          AU: "Oceania",
+          CA: "North America",
+          DE: "Europe",
+          GB: "Europe",
+          US: "North America",
+        };
+
         const validData = results.data
           .filter((item) => item.latitude && item.longitude)
           .slice(0, 8000)
@@ -89,6 +73,7 @@ function App() {
               continent: continent,
             };
           });
+
         setData(validData);
       },
     });
@@ -102,6 +87,7 @@ function App() {
     return data.slice(0, 100);
   }, [data, selectedContinent, selectedCountry]);
 
+  // Prepare chart data when continent is selected
   const continentData = data.filter((d) => d.continent === selectedContinent);
   const countriesList = [...new Set(continentData.map((d) => d.country))];
   const countryCounts = countriesList.map(
@@ -123,7 +109,7 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Sidebar */}
+      {/* Floating Sidebar */}
       <div className="sidebar">
         {!selectedContinent && (
           <>
@@ -142,6 +128,7 @@ function App() {
             ))}
           </>
         )}
+
         {selectedContinent && !selectedCountry && (
           <>
             <h3>{selectedContinent} - Countries</h3>
@@ -159,6 +146,7 @@ function App() {
                 </button>
               )
             )}
+
             {/* Charts */}
             <div className="charts">
               <h4>Charts for {selectedContinent}</h4>
@@ -218,6 +206,7 @@ function App() {
             </div>
           </>
         )}
+
         {selectedCountry && (
           <>
             <h3>{selectedCountry} - Records</h3>
@@ -237,6 +226,7 @@ function App() {
               ))}
           </>
         )}
+
         {selectedRecord && (
           <div className="record-details">
             <h4>Record Details</h4>
@@ -263,16 +253,8 @@ function App() {
       {/* Map */}
       <MapContainer center={[38, -97]} zoom={4} className="map-container">
         <TileLayer
-          attribution="© OpenStreetMap"
+          attribution="&copy; OpenStreetMap"
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        />
-        {/* ✅ 当选择大洲时平移地图 */}
-        <MapController
-          center={
-            selectedContinent && selectedContinent !== "Unknown"
-              ? continentCenters[selectedContinent.replace(/\s/g, "")]
-              : null
-          }
         />
         {filteredData.map((item, index) => {
           const lat = parseFloat(item.latitude);
@@ -307,4 +289,5 @@ function App() {
     </div>
   );
 }
+
 export default App;
