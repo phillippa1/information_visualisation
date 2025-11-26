@@ -85,8 +85,8 @@ function App() {
   /* Duration summary for collapsed button */
   const durationSummary = durationEnabled
     ? `${humanDuration(selectedDuration[0])} – ${humanDuration(
-        selectedDuration[1]
-      )}`
+      selectedDuration[1]
+    )}`
     : "OFF";
 
   /* -------------------- LOAD CSV -------------------- */
@@ -512,4 +512,4 @@ function App() {
 }
 
 
-export default App;d
+export default App;
