@@ -35,7 +35,7 @@ ChartJS.register(
   ArcElement
 );
 
-// ✅ 大洲中心坐标映射
+//mapping continent on the screen so that when click the button, can move to that continent
 const continentCenters = {
   Africa: [1.5, 17.3],
   Asia: [34.0479, 100.6197],
@@ -45,7 +45,6 @@ const continentCenters = {
   SouthAmerica: [-8.7832, -55.4915],
 };
 
-// ✅ 国家 → 大洲映射
 const countryToContinent = {
   AU: "Oceania",
   CA: "North America",
@@ -54,11 +53,11 @@ const countryToContinent = {
   US: "North America",
 };
 
-// ✅ 控制地图视图的组件
+// controll the map view
 function MapController({ center }) {
   const map = useMap();
   if (center) {
-    map.setView(center, 4); // 平移并缩放
+    map.setView(center, 4);
   }
   return null;
 }
@@ -266,7 +265,7 @@ function App() {
           attribution="© OpenStreetMap"
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
-        {/* ✅ 当选择大洲时平移地图 */}
+        {/* moving the map when clicks the continent */}
         <MapController
           center={
             selectedContinent && selectedContinent !== "Unknown"
