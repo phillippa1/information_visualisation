@@ -5,6 +5,10 @@ const TimeSlider = ({ selectedYear, setSelectedYear }) => {
     const MIN = 1906;
     const MAX = 2014;
 
+
+
+
+    // Styling
     return (
         <div
             style={{
@@ -13,12 +17,12 @@ const TimeSlider = ({ selectedYear, setSelectedYear }) => {
                 width: 'calc(100% - 40px)', // 20px left + 20px right padding
 
                 background: "rgba(255,255,255,0.9)",
-                padding: "10px 20px",
+                padding: "30px 20px",
                 zIndex: 2000,
                 borderTop: "1px solid #ddd",
             }}
         >
-            <label style={{ display: "block", marginBottom: "5px" }}>
+            <label style={{ display: "block", marginBottom: "4px" }}>
                 Year Range: {selectedYear[0]} — {selectedYear[1]}
             </label>
 
@@ -44,7 +48,8 @@ const TimeSlider = ({ selectedYear, setSelectedYear }) => {
                                 min: MIN,
                                 max: MAX
                             }),
-                            alignSelf: 'center',
+                            //alignSelf: 'center',
+                            marginTop: '50px'
                         }}
                     >
                         {children}
@@ -58,7 +63,7 @@ const TimeSlider = ({ selectedYear, setSelectedYear }) => {
                             height: '24px',
                             width: '24px',
                             borderRadius: '50%',
-                            backgroundColor: index === 0 ? '#70916C' : '#7085B8',
+                            backgroundColor: index === 0 ? '#7085B8' : '#7085B8',
                             display: 'flex',
                             justifyContent: 'center',
                             alignItems: 'center',

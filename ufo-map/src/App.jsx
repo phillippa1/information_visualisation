@@ -5,7 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
 import TimeSlider from "./TimeSlider";
 
-// Mapping continent codes to full names
+//using maptypes from lightning chart but not currently implemented
+//MapType.WorldMap;
+// Todo: Take the debug info out of the main prototype
+
+
+// Mapping continent codes to full names- either add a continent map to countries but continents are not included in the data?
+// Using https://lightningchart.com/blog/javascript-map-chart-library/#start-page for the mapping of countries
 const continentMap = {
   AF: "Africa",
   AN: "Antarctica",
