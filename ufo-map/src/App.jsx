@@ -22,6 +22,8 @@ import {
   useMap,
 } from "react-leaflet";
 import "./App.css";
+import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
+import TimeSlider from "./TimeSlider";
 
 ChartJS.register(
   CategoryScale,
@@ -66,6 +68,7 @@ function App() {
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [highlightedId, setHighlightedId] = useState(null);
+  const [selectedYear, setSelectedYear] = useState([1906, 2014]); // range
 
   useEffect(() => {
     Papa.parse("/UFO_dataset.csv", {
@@ -85,6 +88,8 @@ function App() {
               ...item,
               country: code || "Unknown",
               continent: continent,
+              continent: continentMap[continentCode] || "Unknown",
+              year: parseInt(item.datetime?.split("/")[2]) || null
             };
           });
         setData(validData);
@@ -113,6 +118,23 @@ function App() {
       return data.filter((d) => d.continent === selectedContinent);
     return data.slice(0, 100);
   }, [data, selectedContinent, selectedCountry]);
+    let filtered = [...data];
+
+    if (selectedCountry) {
+      filtered = filtered.filter(d => d.country === selectedCountry);
+    } else if (selectedContinent) {
+      filtered = filtered.filter(d => d.continent === selectedContinent);
+    }
+
+    filtered = filtered.filter(
+      d => d.year >= selectedYear[0] && d.year <= selectedYear[1]
+    );
+
+    return filtered.slice(0, 300);
+  }, [data, selectedContinent, selectedCountry, selectedYear]);
+
+  console.log(filteredData.length, selectedYear);
+
 
   const continentData = data.filter((d) => d.continent === selectedContinent);
   const countriesList = [...new Set(continentData.map((d) => d.country))];
@@ -324,6 +346,10 @@ function App() {
           );
         })}
       </MapContainer>
+
+      <TimeSlider selectedYear={selectedYear} setSelectedYear={setSelectedYear} />
+
+
     </div>
   );
 }
