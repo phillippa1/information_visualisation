@@ -74,20 +74,3 @@ html, body, #root {
   width: 100%;
   height: 100%;
 }
-
-
-
-.flash {
-  animation: flashAnim 0.3s alternate 3;
-}
-
-@keyframes flashAnim {
-  from {
-    background-color: #fff;
-  }
-  to {
-    background-color: #ffeb3b; /* yellow blink */
-  }
-}
-
-
