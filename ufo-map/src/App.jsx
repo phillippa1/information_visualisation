@@ -35,7 +35,6 @@ ChartJS.register(
   ArcElement
 );
 
-//mapping continent on the screen so that when click the button, can move to that continent
 const continentCenters = {
   Africa: [1.5, 17.3],
   Asia: [34.0479, 100.6197],
@@ -53,7 +52,6 @@ const countryToContinent = {
   US: "North America",
 };
 
-// controll the map view
 function MapController({ center }) {
   const map = useMap();
   if (center) {
@@ -67,6 +65,7 @@ function App() {
   const [selectedContinent, setSelectedContinent] = useState(null);
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [highlightedId, setHighlightedId] = useState(null);
 
   useEffect(() => {
     Papa.parse("/UFO_dataset.csv", {
@@ -92,6 +91,20 @@ function App() {
       },
     });
   }, []);
+
+  // blink and highlight
+  useEffect(() => {
+    if (!highlightedId) return;
+    let count = 0;
+    const interval = setInterval(() => {
+      count++;
+      if (count >= 6) {
+        clearInterval(interval);
+        setHighlightedId(null);
+      }
+    }, 300);
+    return () => clearInterval(interval);
+  }, [highlightedId]);
 
   const filteredData = useMemo(() => {
     if (selectedCountry)
@@ -223,17 +236,20 @@ function App() {
             <button onClick={() => setSelectedCountry(null)}>← Back</button>
             {data
               .filter((d) => d.country === selectedCountry)
-              .map((item, index) => (
-                <div
-                  key={index}
-                  onClick={() => setSelectedRecord(item)}
-                  className="record-item"
-                >
-                  <strong>{item.datetime}</strong>
-                  <br />
-                  {item.city}
-                </div>
-              ))}
+              .map((item, index) => {
+                const isFlashing = highlightedId === item.datetime;
+                return (
+                  <div
+                    key={index}
+                    onClick={() => setSelectedRecord(item)}
+                    className={`record-item ${isFlashing ? "flash" : ""}`}
+                  >
+                    <strong>{item.datetime}</strong>
+                    <br />
+                    {item.city}
+                  </div>
+                );
+              })}
           </>
         )}
         {selectedRecord && (
@@ -265,7 +281,6 @@ function App() {
           attribution="© OpenStreetMap"
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
-        {/* moving the map when clicks the continent */}
         <MapController
           center={
             selectedContinent && selectedContinent !== "Unknown"
@@ -277,19 +292,25 @@ function App() {
           const lat = parseFloat(item.latitude);
           const lng = parseFloat(item.longitude);
           if (isNaN(lat) || isNaN(lng)) return null;
+
+          const isSelected = selectedRecord && selectedRecord === item;
+
           return (
             <CircleMarker
               key={index}
               center={[lat, lng]}
               radius={5}
               pathOptions={{
-                color: "#d64541",
-                fillColor: "#d64541",
-                fillOpacity: 0.8,
+                color: isSelected ? "#2196f3" : "#d64541", // blue highlight
+                fillColor: isSelected ? "#2196f3" : "#d64541",
+                fillOpacity: 0.9,
                 stroke: false,
               }}
               eventHandlers={{
-                click: () => setSelectedRecord(item),
+                click: () => {
+                  setSelectedRecord(item);
+                  setHighlightedId(item.datetime); // sidebar blink
+                },
               }}
             >
               <Popup>
@@ -306,4 +327,5 @@ function App() {
     </div>
   );
 }
+
 export default App;
