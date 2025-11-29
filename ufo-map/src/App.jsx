@@ -10,6 +10,7 @@ import {
   Title,
   Tooltip,
 } from "chart.js";
+
 import "leaflet/dist/leaflet.css";
 import Papa from "papaparse";
 import { useEffect, useMemo, useState } from "react";
@@ -21,8 +22,11 @@ import {
   TileLayer,
   useMap,
 } from "react-leaflet";
+
 import "./App.css";
 import TimeSlider from "./TimeSlider.jsx";
+import ShapeFilter from "./ShapeFilter.jsx";
+import DurationFilter from "./DurationFilter.jsx";
 
 ChartJS.register(
   CategoryScale,
@@ -36,6 +40,9 @@ ChartJS.register(
   ArcElement
 );
 
+//
+// CONTINENT DATA
+//
 const continentCenters = {
   Africa: [1.5, 17.3],
   Asia: [34.0479, 100.6197],
@@ -53,103 +60,162 @@ const countryToContinent = {
   US: "North America",
 };
 
+//
+// YEAR PARSER
+//
+function extractYear(datetime) {
+  if (!datetime) return null;
+  const parts = datetime.split(" ")[0].split("/");
+  if (parts.length !== 3) return null;
+  const y = parseInt(parts[2]);
+  if (isNaN(y) || y < 1900 || y > 2050) return null;
+  return y;
+}
+
 function MapController({ center }) {
   const map = useMap();
-  if (center) {
-    map.setView(center, 4);
-  }
+  useEffect(() => {
+    if (center) map.setView(center, 4);
+  }, [center]);
   return null;
 }
 
+//
+// APP
+//
 function App() {
   const [data, setData] = useState([]);
+
+  const [selectedShapes, setSelectedShapes] = useState([]);
+  const [selectedDuration, setSelectedDuration] = useState([0, 3600]);
+
   const [selectedContinent, setSelectedContinent] = useState(null);
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
-  const [highlightedId, setHighlightedId] = useState(null);
+
   const [selectedYear, setSelectedYear] = useState([1906, 2014]);
 
-  // Load CSV
+  //
+  // LOAD CSV — TOP 2000 ROWS ONLY
+  //
   useEffect(() => {
     Papa.parse("/UFO_dataset.csv", {
       download: true,
       header: true,
       skipEmptyLines: true,
-      transformHeader: (header) =>
-        header.replace(/[^a-zA-Z0-9]/g, "").toLowerCase(),
+      transformHeader: (h) => h.replace(/[^a-zA-Z0-9]/g, "").toLowerCase(),
       complete: (results) => {
-        const validData = results.data
+        const valid = results.data
           .filter((item) => item.latitude && item.longitude)
-          .slice(0, 2000) //only read the first 2000 lines
           .map((item) => {
-            const code = item.country?.toUpperCase();
-            const continent = countryToContinent[code] || "Unknown";
-            const year = parseInt(item.datetime?.split("/")[2]) || null;
+            const code = item.country?.toUpperCase() || "Unknown";
             return {
               ...item,
-              country: code || "Unknown",
-              continent: continent,
-              year: year,
+              country: code,
+              continent: countryToContinent[code] || "Unknown",
+              year: extractYear(item.datetime),
+              durationSeconds: Number(item.durationseconds) || 0,
             };
           });
-        setData(validData);
+
+        setData(valid.slice(0, 2000));
       },
     });
   }, []);
 
-  // Blink effect for selected record
-  useEffect(() => {
-    if (!highlightedId) return;
-    let count = 0;
-    const interval = setInterval(() => {
-      count++;
-      if (count >= 6) {
-        clearInterval(interval);
-        setHighlightedId(null);
-      }
-    }, 300);
-    return () => clearInterval(interval);
-  }, [highlightedId]);
-
-  // Correct filtering logic
+  //
+  // FILTERED DATA (MAP + CHARTS + COUNTRIES)
+  //
   const filteredData = useMemo(() => {
-    let filtered = [...data];
+    if (data.length === 0) return [];
 
-    if (selectedCountry) {
-      filtered = filtered.filter((d) => d.country === selectedCountry);
-    } else if (selectedContinent) {
-      filtered = filtered.filter((d) => d.continent === selectedContinent);
-    }
+    let base = [...data];
 
-    filtered = filtered.filter(
-      (d) => d.year >= selectedYear[0] && d.year <= selectedYear[1]
+    // Shape filter
+    if (selectedShapes.length === 0) return [];
+
+    base = base.filter((d) =>
+      selectedShapes.includes((d.shape || "unknown").toLowerCase().trim())
     );
 
-    return filtered.slice(0, 300);
-  }, [data, selectedContinent, selectedCountry, selectedYear]);
+    // Continent / Country
+    if (selectedCountry) {
+      base = base.filter((d) => d.country === selectedCountry);
+    } else if (selectedContinent) {
+      base = base.filter((d) => d.continent === selectedContinent);
+    }
 
-  // Data for charts
-  const continentData = data.filter((d) => d.continent === selectedContinent);
+    // Year filter
+    base = base.filter(
+      (d) =>
+        d.year !== null &&
+        d.year >= selectedYear[0] &&
+        d.year <= selectedYear[1]
+    );
+
+    // Duration filter
+    base = base.filter(
+      (d) =>
+        d.durationSeconds >= selectedDuration[0] &&
+        d.durationSeconds <= selectedDuration[1]
+    );
+
+    return base;
+  }, [
+    data,
+    selectedShapes,
+    selectedContinent,
+    selectedCountry,
+    selectedYear,
+    selectedDuration,
+  ]);
+
+  //
+  // CHART DATA (NOW USES filteredData)
+  //
+  const continentData = filteredData.filter(
+    (d) => d.continent === selectedContinent
+  );
+
   const countriesList = [...new Set(continentData.map((d) => d.country))];
   const countryCounts = countriesList.map(
     (country) => continentData.filter((d) => d.country === country).length
   );
+
   const yearCounts = {};
   continentData.forEach((d) => {
-    const year = d.datetime?.split(" ")[0].split("/")[2];
-    if (year) yearCounts[year] = (yearCounts[year] || 0) + 1;
+    if (d.year) yearCounts[d.year] = (yearCounts[d.year] || 0) + 1;
   });
+
   const years = Object.keys(yearCounts).sort((a, b) => a - b);
   const counts = years.map((year) => yearCounts[year]);
+
   const shapes = [...new Set(continentData.map((d) => d.shape))];
   const shapeCounts = shapes.map(
     (shape) => continentData.filter((d) => d.shape === shape).length
   );
 
+  //
+  // RENDER
+  //
   return (
     <div className="app-container">
-      {/* Sidebar */}
       <div className="sidebar">
+        {/* SHAPE FILTER */}
+        <ShapeFilter
+          data={data}
+          selectedShapes={selectedShapes}
+          setSelectedShapes={setSelectedShapes}
+        />
+
+        {/* DURATION FILTER */}
+        <DurationFilter
+          data={data}
+          selectedDuration={selectedDuration}
+          setSelectedDuration={setSelectedDuration}
+        />
+
+        {/* CONTINENT SELECT */}
         {!selectedContinent && (
           <>
             <h3>Select a Continent</h3>
@@ -168,10 +234,12 @@ function App() {
           </>
         )}
 
+        {/* COUNTRY SELECT */}
         {selectedContinent && !selectedCountry && (
           <>
-            <h3>{selectedContinent} - Countries</h3>
+            <h3>{selectedContinent} — Countries</h3>
             <button onClick={() => setSelectedContinent(null)}>← Back</button>
+
             {countriesList.map((country) => (
               <button
                 key={country}
@@ -184,9 +252,8 @@ function App() {
               </button>
             ))}
 
-            {/* Charts */}
+            {/* CHARTS */}
             <div className="charts">
-              <h4>Charts for {selectedContinent}</h4>
               <Bar
                 data={{
                   labels: countriesList,
@@ -198,8 +265,8 @@ function App() {
                     },
                   ],
                 }}
-                options={{ responsive: true }}
               />
+
               <Line
                 data={{
                   labels: years,
@@ -212,16 +279,8 @@ function App() {
                     },
                   ],
                 }}
-                options={{
-                  responsive: true,
-                  scales: {
-                    x: { title: { display: true, text: "Year" } },
-                    y: {
-                      title: { display: true, text: "Number of Sightings" },
-                    },
-                  },
-                }}
               />
+
               <Pie
                 data={{
                   labels: shapes,
@@ -238,114 +297,100 @@ function App() {
                     },
                   ],
                 }}
-                options={{ responsive: true }}
               />
             </div>
           </>
         )}
 
+        {/* COUNTRY RECORDS */}
         {selectedCountry && (
           <>
-            <h3>{selectedCountry} - Records</h3>
+            <h3>{selectedCountry} — Records</h3>
             <button onClick={() => setSelectedCountry(null)}>← Back</button>
-            {data
+
+            {filteredData
               .filter((d) => d.country === selectedCountry)
               .map((item, index) => {
-                const isFlashing = highlightedId === item.datetime;
+                const isSelected =
+                  selectedRecord &&
+                  selectedRecord.datetime === item.datetime;
+
                 return (
-                  <div
-                    key={index}
-                    onClick={() => setSelectedRecord(item)}
-                    className={`record-item ${isFlashing ? "flash" : ""}`}
-                  >
-                    <strong>{item.datetime}</strong>
-                    <br />
-                    {item.city}
-                  </div>
-                );
-              })}
-          </>
-        )}
+                  <div key={index} className="record-wrapper">
+                    <div
+                      className="record-item"
+                      onClick={() => setSelectedRecord(item)}
+                    >
+                      <strong>{item.datetime}</strong>
+                      <br />
+                      {item.city}
+                    </div>
 
-        {selectedRecord && (
-          <div className="record-details">
-            <h4>Record Details</h4>
-            <p>
-              <strong>Date/Time:</strong> {selectedRecord.datetime}
-            </p>
-            <p>
-              <strong>City:</strong> {selectedRecord.city}
-            </p>
-            <p>
-              <strong>Shape:</strong> {selectedRecord.shape}
-            </p>
-            <p>
-              <strong>Duration:</strong> {selectedRecord.durationseconds}{" "}
-              seconds
-            </p>
-            <p>
-              <strong>Comments:</strong> {selectedRecord.comments}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Map */}
-      <MapContainer center={[38, -97]} zoom={4} className="map-container">
-        <TileLayer
-          attribution="© OpenStreetMap"
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        />
-        <MapController
-          center={
-            selectedContinent && selectedContinent !== "Unknown"
-              ? continentCenters[selectedContinent.replace(/\s/g, "")]
-              : null
-          }
-        />
-        {filteredData.map((item, index) => {
-          const lat = parseFloat(item.latitude);
-          const lng = parseFloat(item.longitude);
-          if (isNaN(lat) || isNaN(lng)) return null;
-          const isSelected =
-            selectedRecord && selectedRecord.datetime === item.datetime;
-          return (
-            <CircleMarker
-              key={index}
-              center={[lat, lng]}
-              radius={5}
-              pathOptions={{
-                color: isSelected ? "#2196f3" : "#d64541", // blue if selected
-                fillColor: isSelected ? "#2196f3" : "#d64541",
-                fillOpacity: 0.9,
-                stroke: false,
-              }}
-              eventHandlers={{
-                click: () => {
-                  setSelectedRecord(item);
-                  setHighlightedId(item.datetime);
-                },
-              }}
-            >
-              <Popup>
-                <strong>{item.city}</strong>
-                <br />
-                {item.shape}
-                <br />
-                {item.datetime}
-              </Popup>
-            </CircleMarker>
-          );
-        })}
-      </MapContainer>
-
-      {/* TimeSlider */}
-      <TimeSlider
-        selectedYear={selectedYear}
-        setSelectedYear={setSelectedYear}
-      />
+                    {isSelected && (
+                      <div className="record-details-inline">
+                        <p><strong>Date/Time:</strong> {item.datetime}</p>
+                        <p><strong>City:</strong> {item.city}</p>
+                        <p><strong>Shape:</strong> {item.shape}</p>
+                        <p><strong>Duration:</strong> {item.durationSeconds} sec</p>
+                        <p><strong>Comments:</strong> {item.comments}</p>
+                      </div>
+                    )}
+              </div>
+            );
+          })}
+        </>
+      )}
     </div>
-  );
+
+    {/* MAP */}
+    <MapContainer center={[38, -97]} zoom={4} className="map-container">
+      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+
+      <MapController
+        center={
+          selectedContinent && selectedContinent !== "Unknown"
+            ? continentCenters[selectedContinent.replace(/\s/g, "")]
+            : null
+        }
+      />
+
+      {filteredData.map((item, index) => {
+        const lat = parseFloat(item.latitude);
+        const lng = parseFloat(item.longitude);
+        if (isNaN(lat) || isNaN(lng)) return null;
+
+        const isSelected =
+          selectedRecord &&
+          selectedRecord.datetime.trim() === item.datetime.trim();
+
+        return (
+          <CircleMarker
+            key={index}
+            center={[lat, lng]}
+            radius={5}
+            pathOptions={{
+              color: isSelected ? "#2196f3" : "#d64541",
+              fillColor: isSelected ? "#2196f3" : "#d64541",
+              fillOpacity: 0.9,
+              stroke: false,
+            }}
+            eventHandlers={{ click: () => setSelectedRecord(item) }}
+          >
+            <Popup>
+              <strong>{item.city}</strong>
+              <br />
+              {item.shape}
+              <br />
+              {item.datetime}
+            </Popup>
+          </CircleMarker>
+        );
+      })}
+    </MapContainer>
+
+    <TimeSlider selectedYear={selectedYear} setSelectedYear={setSelectedYear} />
+  </div>
+);
 }
 
 export default App;
