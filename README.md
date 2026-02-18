@@ -1,2 +1,2 @@
 # information_visualisation
-Prototype for the group project
+Prototype for visualising large amounts of data.
